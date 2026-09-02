@@ -107,6 +107,14 @@ export const SearchSection: React.FC<SearchSectionProps> = ({
 
       setCalculationResult(result);
 
+      // Populate input boxes with the document-audited company name and year if not manually entered
+      if (result.assessment?.companyName && !customCompanyName) {
+        setCustomCompanyName(result.assessment.companyName);
+      }
+      if (result.assessment?.fiscalYear && !customFiscalYear) {
+        setCustomFiscalYear(result.assessment.fiscalYear);
+      }
+
       // Auto-update parent assessment state so it's instantly accessible everywhere
       if (onCalculationComplete) {
         onCalculationComplete(result.assessment);
@@ -157,22 +165,11 @@ export const SearchSection: React.FC<SearchSectionProps> = ({
     setErrorMsg(null);
     setCalculationResult(null);
 
-    // Auto-detect company name hint from file name if empty
-    let detectedName = customCompanyName;
-    if (!detectedName) {
-      const cleanName = file.name
-        .replace(/\.[^/.]+$/, '')
-        .replace(/[_-]/g, ' ')
-        .replace(/brsr|report|esg|annual|fy\d+/gi, '')
-        .trim();
-      if (cleanName.length > 2) {
-        detectedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
-        setCustomCompanyName(detectedName);
-      }
-    }
+    // If user explicitly typed a company name, respect it; otherwise let the auditor engine extract the true legal entity from the report
+    const companyToUse = customCompanyName?.trim() || undefined;
 
     // AUTOMATICALLY calculate immediately when a file is uploaded!
-    executeCalculation({ file, overrideCompany: detectedName });
+    executeCalculation({ file, overrideCompany: companyToUse });
   };
 
   const handleSelectSample = (sample: SampleBrsrFile) => {

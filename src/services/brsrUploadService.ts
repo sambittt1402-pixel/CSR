@@ -1,6 +1,7 @@
 import { CompanyAssessment, IndicatorAssessment, DimensionScore, MissingDataStatus } from '../types';
 import { recalculateOverallAssessment } from './scoringEngine';
 import { SampleBrsrFile } from './sampleBrsrFiles';
+import { auditBrsrReportContent } from './brsrAuditorEngine';
 
 export interface FileCalculationPayload {
   fileName: string;
@@ -253,36 +254,14 @@ export async function calculateBRSRFromFile(
   }
 }
 
-// Client-side fallback evaluator to guarantee results under any network condition
+// Client-side statutory auditor to guarantee non-repetitive, document-driven results under any network condition
 function generateFallbackEvaluation(fileName: string, text: string, inputCompany?: string, inputYear?: string) {
-  const cleanName = fileName
-    .replace(/\.[^/.]+$/, '')
-    .replace(/[_-]/g, ' ')
-    .replace(/brsr|report|esg|annual|fy\d+/gi, '')
-    .trim();
-  const companyName = inputCompany || (cleanName.length > 1 ? `${cleanName.charAt(0).toUpperCase() + cleanName.slice(1)}` : 'Corporate Enterprise');
-  const fiscalYear = inputYear || 'FY 2024–25';
-
-  return {
-    companyName,
-    industry: 'Diversified Listed Enterprise',
-    sector: 'Commercial & Manufacturing',
-    fiscalYear,
-    overallSummary: `Statutory BRSR evaluation for ${companyName} (${fiscalYear}). Disclosures audited across Environmental, Social, and Governance pillars per SEBI Listing Regulations.`,
-    indicators: [
-      { code: 'E1', score: 4.4, dimensions: { disclosure: 1.15, policyTarget: 1.1, actualPerformance: 1.05, assuranceProgress: 1.1 }, status: 'disclosed', evidenceSummary: 'Scope 1 & 2 GHG inventory disclosed with net-zero pathway.' },
-      { code: 'E2', score: 4.2, dimensions: { disclosure: 1.1, policyTarget: 1.05, actualPerformance: 1.05, assuranceProgress: 1.0 }, status: 'disclosed', evidenceSummary: 'Renewable electricity share and energy conservation measures verified.' },
-      { code: 'E3', score: 4.1, dimensions: { disclosure: 1.05, policyTarget: 1.0, actualPerformance: 1.05, assuranceProgress: 1.0 }, status: 'disclosed', evidenceSummary: 'Zero liquid discharge compliance and solid waste recycling audited.' },
-      { code: 'E4', score: 3.9, dimensions: { disclosure: 1.0, policyTarget: 1.0, actualPerformance: 0.95, assuranceProgress: 0.95 }, status: 'disclosed', evidenceSummary: 'Life Cycle Assessment (LCA) and Extended Producer Responsibility (EPR) documented.' },
-      { code: 'S1', score: 4.3, dimensions: { disclosure: 1.1, policyTarget: 1.1, actualPerformance: 1.05, assuranceProgress: 1.05 }, status: 'disclosed', evidenceSummary: 'LTIFR occupational safety metrics and employee well-being coverage.' },
-      { code: 'S2', score: 4.0, dimensions: { disclosure: 1.05, policyTarget: 1.0, actualPerformance: 1.0, assuranceProgress: 0.95 }, status: 'disclosed', evidenceSummary: 'Gender diversity ratios, equal remuneration, and POSH committee compliance.' },
-      { code: 'S3', score: 4.5, dimensions: { disclosure: 1.15, policyTarget: 1.15, actualPerformance: 1.1, assuranceProgress: 1.1 }, status: 'disclosed', evidenceSummary: 'Mandatory Section 135 CSR 2% spend fulfilled with local impact assessments.' },
-      { code: 'S4', score: 4.1, dimensions: { disclosure: 1.05, policyTarget: 1.0, actualPerformance: 1.05, assuranceProgress: 1.0 }, status: 'disclosed', evidenceSummary: 'Consumer feedback grievance redressal and cybersecurity policies verified.' },
-      { code: 'G1', score: 4.6, dimensions: { disclosure: 1.2, policyTarget: 1.15, actualPerformance: 1.15, assuranceProgress: 1.1 }, status: 'disclosed', evidenceSummary: 'Anti-corruption policy, vigil mechanism hotline, and Code of Conduct sign-off.' },
-      { code: 'G2', score: 4.4, dimensions: { disclosure: 1.15, policyTarget: 1.1, actualPerformance: 1.1, assuranceProgress: 1.05 }, status: 'disclosed', evidenceSummary: 'Board independence balance and ESG committee oversight established.' },
-      { code: 'G3', score: 4.2, dimensions: { disclosure: 1.1, policyTarget: 1.05, actualPerformance: 1.05, assuranceProgress: 1.0 }, status: 'disclosed', evidenceSummary: 'Zero regulatory environmental penalties and statutory compliance track record.' },
-    ],
-  };
+  return auditBrsrReportContent({
+    fileName,
+    fileContent: text,
+    companyName: inputCompany,
+    fiscalYear: inputYear,
+  });
 }
 
 // Calculate from raw text / pasted document disclosures
