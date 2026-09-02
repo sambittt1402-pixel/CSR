@@ -1,0 +1,6 @@
+{
+  "name": "BRSR ESG Rating System",
+  "description": "Upload any corporate BRSR or ESG report to evaluate sustainability performance, audit disclosures across Principles 1–9, and calculate statutory 100-point SEBI ESG scores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
