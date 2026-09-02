@@ -27,7 +27,8 @@ import {
   ShieldCheck, 
   Layers, 
   BookOpen,
-  Scale
+  Scale,
+  CheckCircle2
 } from 'lucide-react';
 
 export function App() {
@@ -274,6 +275,24 @@ export function App() {
         {/* VIEW: Company Assessment Dashboard (Main Core View) */}
         {currentTab === 'assessment' && (
           <div className="animate-fadeIn">
+            {/* Notification Banner for Uploaded File Audit */}
+            {currentAssessment.companyId.startsWith('upload') && (
+              <div className="bg-emerald-700 text-white px-4 py-2.5 shadow-sm text-xs font-semibold flex flex-col sm:flex-row items-center justify-between gap-2 border-b border-emerald-800">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-200 shrink-0" />
+                  <span>
+                    Audit Result Generated: Successfully calculated statutory BRSR ESG rating for <strong>{currentAssessment.companyName}</strong> ({currentAssessment.fiscalYear}) from your uploaded report! Total Score: <strong>{currentAssessment.overallScore.toFixed(1)} / 100 ({currentAssessment.rating})</strong>
+                  </span>
+                </div>
+                <button
+                  onClick={() => setCurrentTab('search')}
+                  className="px-2.5 py-1 rounded bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold cursor-pointer transition-colors shrink-0"
+                >
+                  Upload Another Report
+                </button>
+              </div>
+            )}
+
             {/* 1. Header Profile & FY Selector */}
             <CompanyProfileHeader
               assessment={currentAssessment}

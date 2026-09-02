@@ -52,6 +52,79 @@ export const SearchSection: React.FC<SearchSectionProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const resultCardRef = useRef<HTMLDivElement>(null);
+
+  // Core execution function that can be triggered automatically or manually
+  const executeCalculation = async (params?: {
+    file?: File | null;
+    sample?: SampleBrsrFile | null;
+    text?: string;
+    overrideCompany?: string;
+    overrideYear?: string;
+  }) => {
+    const fileToProcess = params?.file !== undefined ? params.file : selectedFile;
+    const sampleToProcess = params?.sample !== undefined ? params.sample : selectedSample;
+    const textToProcess = params?.text !== undefined ? params.text : pastedText;
+
+    if (!fileToProcess && !sampleToProcess && !textToProcess.trim()) {
+      setErrorMsg('Please upload a BRSR/ESG file, select a sample report, or paste disclosure text.');
+      return;
+    }
+
+    setIsCalculating(true);
+    setErrorMsg(null);
+    setCalculationResult(null);
+
+    try {
+      setCalculationStep('Step 1/4: Reading document and parsing BRSR Sections A, B & C...');
+      await new Promise((r) => setTimeout(r, 400));
+
+      setCalculationStep('Step 2/4: Auditing statutory disclosures across NGRBC Principles 1–9...');
+      await new Promise((r) => setTimeout(r, 450));
+
+      setCalculationStep('Step 3/4: Calculating Environmental, Social & Governance pillar weights (35:35:30)...');
+      await new Promise((r) => setTimeout(r, 400));
+
+      let result: CalculationResult;
+
+      if (fileToProcess) {
+        result = await calculateBRSRFromFile(fileToProcess, {
+          companyName: params?.overrideCompany || customCompanyName || undefined,
+          fiscalYear: params?.overrideYear || customFiscalYear || undefined,
+        });
+      } else if (sampleToProcess) {
+        result = await calculateBRSRFromSample(sampleToProcess);
+      } else {
+        result = await calculateBRSRFromText(textToProcess, {
+          fileName: 'Pasted_BRSR_Text.txt',
+          companyName: params?.overrideCompany || customCompanyName || undefined,
+          fiscalYear: params?.overrideYear || customFiscalYear || undefined,
+        });
+      }
+
+      setCalculationStep('Step 4/4: Finalizing 100-Point statutory scorecard & verbatim citations...');
+      await new Promise((r) => setTimeout(r, 350));
+
+      setCalculationResult(result);
+
+      // Auto-update parent assessment state so it's instantly accessible everywhere
+      if (onCalculationComplete) {
+        onCalculationComplete(result.assessment);
+      }
+
+      // Smoothly scroll down to the result card so the user immediately sees the score
+      setTimeout(() => {
+        resultCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 100);
+
+    } catch (err: any) {
+      console.error('Calculation error:', err);
+      setErrorMsg(err.message || 'Error occurred while calculating BRSR ESG score.');
+    } finally {
+      setIsCalculating(false);
+      setCalculationStep('');
+    }
+  };
 
   // Handle Drag & Drop
   const handleDragOver = (e: React.DragEvent) => {
@@ -85,16 +158,21 @@ export const SearchSection: React.FC<SearchSectionProps> = ({
     setCalculationResult(null);
 
     // Auto-detect company name hint from file name if empty
-    if (!customCompanyName) {
+    let detectedName = customCompanyName;
+    if (!detectedName) {
       const cleanName = file.name
         .replace(/\.[^/.]+$/, '')
         .replace(/[_-]/g, ' ')
         .replace(/brsr|report|esg|annual|fy\d+/gi, '')
         .trim();
       if (cleanName.length > 2) {
-        setCustomCompanyName(cleanName.charAt(0).toUpperCase() + cleanName.slice(1));
+        detectedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+        setCustomCompanyName(detectedName);
       }
     }
+
+    // AUTOMATICALLY calculate immediately when a file is uploaded!
+    executeCalculation({ file, overrideCompany: detectedName });
   };
 
   const handleSelectSample = (sample: SampleBrsrFile) => {
@@ -105,6 +183,9 @@ export const SearchSection: React.FC<SearchSectionProps> = ({
     setCustomFiscalYear(sample.fiscalYear);
     setErrorMsg(null);
     setCalculationResult(null);
+
+    // AUTOMATICALLY calculate immediately when a sample report is selected!
+    executeCalculation({ sample, overrideCompany: sample.companyName, overrideYear: sample.fiscalYear });
   };
 
   const handleClear = () => {
@@ -118,57 +199,9 @@ export const SearchSection: React.FC<SearchSectionProps> = ({
     }
   };
 
-  // Run Calculation
+  // Run Manual Calculation (e.g. from pasted text or modified company name)
   const handleCalculateScore = async () => {
-    if (!selectedFile && !selectedSample && !pastedText.trim()) {
-      setErrorMsg('Please upload a BRSR/ESG file, select a sample report, or paste disclosure text.');
-      return;
-    }
-
-    setIsCalculating(true);
-    setErrorMsg(null);
-
-    try {
-      setCalculationStep('Parsing BRSR Sections A, B & C Disclosures...');
-      await new Promise((r) => setTimeout(r, 400));
-
-      setCalculationStep('Auditing NGRBC Principles 1 through 9...');
-      await new Promise((r) => setTimeout(r, 400));
-
-      setCalculationStep('Calculating Environmental, Social & Governance Weights (35:35:30)...');
-
-      let result: CalculationResult;
-
-      if (selectedFile) {
-        result = await calculateBRSRFromFile(selectedFile, {
-          companyName: customCompanyName || undefined,
-          fiscalYear: customFiscalYear || undefined,
-        });
-      } else if (selectedSample) {
-        result = await calculateBRSRFromSample(selectedSample);
-      } else {
-        result = await calculateBRSRFromText(pastedText, {
-          fileName: 'Pasted_BRSR_Text.txt',
-          companyName: customCompanyName || undefined,
-          fiscalYear: customFiscalYear || undefined,
-        });
-      }
-
-      setCalculationStep('Finalizing 100-Point Scorecard & Verbatim Citations...');
-      await new Promise((r) => setTimeout(r, 300));
-
-      setCalculationResult(result);
-
-      if (onCalculationComplete) {
-        onCalculationComplete(result.assessment);
-      }
-    } catch (err: any) {
-      console.error('Calculation error:', err);
-      setErrorMsg(err.message || 'Error occurred while calculating BRSR ESG score.');
-    } finally {
-      setIsCalculating(false);
-      setCalculationStep('');
-    }
+    executeCalculation();
   };
 
   const handleViewDetailedReport = () => {
@@ -257,13 +290,39 @@ export const SearchSection: React.FC<SearchSectionProps> = ({
                 className="hidden"
               />
 
-              {!selectedFile && !selectedSample ? (
+              {isCalculating ? (
+                /* ACTIVE COMPUTATION STATE */
+                <div className="py-4 flex flex-col items-center justify-center text-center animate-fadeIn">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center mb-3 shadow-xs">
+                    <Loader2 className="w-6 h-6 animate-spin text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 mb-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                    <span>AUTOMATIC STATUTORY AUDIT IN PROGRESS</span>
+                  </div>
+                  <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                    Extracting BRSR Disclosures & Calculating ESG Score
+                  </h4>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium mt-1">
+                    {calculationStep || 'Analyzing statutory document metrics...'}
+                  </p>
+                  
+                  {/* Progress bar */}
+                  <div className="w-full max-w-sm bg-gray-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden mt-3.5">
+                    <div className="bg-emerald-600 h-full rounded-full animate-pulse transition-all duration-300 w-4/5" />
+                  </div>
+
+                  <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-2 font-mono truncate max-w-xs">
+                    Auditing: {selectedFile ? selectedFile.name : selectedSample?.fileName || 'BRSR Report'}
+                  </p>
+                </div>
+              ) : !selectedFile && !selectedSample ? (
                 <div>
                   <div className="mx-auto w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-3">
                     <UploadCloud className="w-6 h-6" />
                   </div>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    Drop your BRSR or ESG report here
+                    Drop your BRSR or ESG report here to get instant result
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
                     Drag and drop or <span className="text-emerald-600 dark:text-emerald-400 font-semibold underline underline-offset-2">browse file</span> from your computer
@@ -289,7 +348,7 @@ export const SearchSection: React.FC<SearchSectionProps> = ({
                           {selectedFile ? selectedFile.name : selectedSample?.fileName}
                         </span>
                         <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300">
-                          Ready to Calculate
+                          Audited & Evaluated
                         </span>
                       </div>
                       <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">
@@ -306,7 +365,7 @@ export const SearchSection: React.FC<SearchSectionProps> = ({
                       e.stopPropagation();
                       handleClear();
                     }}
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
                     title="Remove file"
                   >
                     <RotateCcw className="w-4 h-4" />
@@ -486,73 +545,178 @@ export const SearchSection: React.FC<SearchSectionProps> = ({
           {calculationResult && (
             <div 
               id="calculation-result-card"
-              className="mt-6 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/40 p-4 sm:p-5 animate-fadeIn shadow-sm"
+              ref={resultCardRef}
+              className="mt-6 rounded-2xl border-2 border-emerald-400 dark:border-emerald-700 bg-white dark:bg-slate-900 p-4 sm:p-6 animate-fadeIn shadow-lg text-left"
             >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-emerald-200 dark:border-emerald-900">
+              {/* Header Badge & Title */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-gray-200 dark:border-slate-800">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-                    Calculation Complete • Verified Statutory Scorecard
-                  </span>
-                  <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white mt-0.5 flex items-center gap-2">
-                    <span>{calculationResult.assessment.companyName}</span>
-                    <span className="text-xs font-mono font-normal text-gray-500 dark:text-slate-400">
-                      ({calculationResult.assessment.fiscalYear})
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-300 font-mono">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      STATUTORY AUDIT COMPLETE
                     </span>
-                  </h3>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <span className="text-[10px] text-gray-500 dark:text-slate-400 block font-semibold">ESG Score</span>
-                    <span className="text-xl font-black text-slate-900 dark:text-white font-mono">
-                      {calculationResult.assessment.overallScore.toFixed(1)} <span className="text-xs font-normal text-gray-400">/ 100</span>
+                    <span className="text-[10px] text-gray-500 dark:text-slate-400 font-mono">
+                      {selectedFile ? `${selectedFile.name} (${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)` : selectedSample?.fileName || 'BRSR Report'}
                     </span>
                   </div>
-                  <span className={`px-2.5 py-1 rounded text-xs font-black font-mono border ${
-                    calculationResult.assessment.overallScore >= 80 
-                      ? 'bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-900 dark:text-emerald-200' 
-                      : 'bg-teal-100 text-teal-900 border-teal-300 dark:bg-teal-900 dark:text-teal-200'
-                  }`}>
-                    {calculationResult.assessment.rating}
-                  </span>
+                  <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
+                    {calculationResult.assessment.companyName}
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
+                    {calculationResult.assessment.industry} • {calculationResult.assessment.fiscalYear}
+                  </p>
+                </div>
+
+                {/* Score & Rating Badge */}
+                <div className="flex items-center gap-3 bg-emerald-50 dark:bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800/80 shrink-0">
+                  <div className="text-right">
+                    <span className="text-[10px] text-gray-500 dark:text-slate-400 block font-bold uppercase">BRSR ESG Score</span>
+                    <span className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white font-mono leading-none">
+                      {calculationResult.assessment.overallScore.toFixed(1)}
+                    </span>
+                    <span className="text-xs font-normal text-gray-400"> / 100</span>
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <span className={`px-3 py-1.5 rounded-lg text-sm font-black font-mono border shadow-xs ${
+                      calculationResult.assessment.overallScore >= 80 
+                        ? 'bg-emerald-600 text-white border-emerald-700' 
+                        : 'bg-teal-600 text-white border-teal-700'
+                    }`}>
+                      {calculationResult.assessment.rating}
+                    </span>
+                    <span className="text-[9px] text-emerald-800 dark:text-emerald-300 font-bold mt-0.5">
+                      {calculationResult.assessment.ratingInterpretation}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* 3 Pillar Score Chips */}
-              <div className="grid grid-cols-3 gap-2 mt-3 text-center">
-                <div className="p-2 rounded bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-900/60">
-                  <span className="text-[10px] font-bold text-gray-500 dark:text-slate-400 block">Environmental</span>
-                  <span className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400">
-                    {calculationResult.assessment.pillars.E.earnedScore.toFixed(1)} / 35
+              {/* Progress Bar with Benchmark */}
+              <div className="mt-3.5 pt-1">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-gray-600 dark:text-slate-300 mb-1">
+                  <span>Audited Score vs SEBI Top 1,000 Average (68.2)</span>
+                  <span className="font-mono text-emerald-700 dark:text-emerald-400 font-bold">
+                    {calculationResult.assessment.overallScore.toFixed(1)}%
                   </span>
                 </div>
-                <div className="p-2 rounded bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-900/60">
-                  <span className="text-[10px] font-bold text-gray-500 dark:text-slate-400 block">Social</span>
-                  <span className="text-xs font-mono font-bold text-rose-600 dark:text-rose-400">
-                    {calculationResult.assessment.pillars.S.earnedScore.toFixed(1)} / 35
-                  </span>
-                </div>
-                <div className="p-2 rounded bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-900/60">
-                  <span className="text-[10px] font-bold text-gray-500 dark:text-slate-400 block">Governance</span>
-                  <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">
-                    {calculationResult.assessment.pillars.G.earnedScore.toFixed(1)} / 30
-                  </span>
+                <div className="relative w-full h-2.5 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-emerald-600 rounded-full transition-all duration-500" 
+                    style={{ width: `${Math.min(100, Math.max(0, calculationResult.assessment.overallScore))}%` }} 
+                  />
+                  {/* Benchmark tick at 68.2% */}
+                  <div 
+                    className="absolute top-0 bottom-0 w-0.5 bg-slate-900 dark:bg-white z-10" 
+                    style={{ left: '68.2%' }} 
+                    title="SEBI Peer Benchmark: 68.2"
+                  />
                 </div>
               </div>
 
-              {/* Action */}
-              <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-                <p className="text-[11px] text-gray-600 dark:text-slate-300 line-clamp-1">
-                  {calculationResult.assessment.strengths[0] || 'Disclosures mapped to all 11 BRSR statutory indicators.'}
-                </p>
+              {/* 3 Pillar Score Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-4">
+                {/* Environmental */}
+                <div className="p-3 rounded-xl bg-blue-50/70 dark:bg-slate-800/80 border border-blue-200 dark:border-slate-700">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-900 dark:text-white mb-1">
+                    <span className="flex items-center gap-1.5 text-blue-700 dark:text-blue-400">
+                      <span>🌿 Environmental</span>
+                    </span>
+                    <span className="font-mono font-extrabold text-blue-800 dark:text-blue-300">
+                      {calculationResult.assessment.pillars.E.earnedScore.toFixed(1)} / 35
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-blue-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-blue-600 rounded-full" 
+                      style={{ width: `${(calculationResult.assessment.pillars.E.earnedScore / 35) * 100}%` }} 
+                    />
+                  </div>
+                  <div className="mt-2 text-[10px] text-gray-500 dark:text-slate-400 flex flex-wrap gap-1 font-mono">
+                    <span className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600">GHG Scope 1-2</span>
+                    <span className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 border border-blue-100 dark:border-slate-600">Energy & Water</span>
+                  </div>
+                </div>
+
+                {/* Social */}
+                <div className="p-3 rounded-xl bg-rose-50/70 dark:bg-slate-800/80 border border-rose-200 dark:border-slate-700">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-900 dark:text-white mb-1">
+                    <span className="flex items-center gap-1.5 text-rose-700 dark:text-rose-400">
+                      <span>🤝 Social</span>
+                    </span>
+                    <span className="font-mono font-extrabold text-rose-800 dark:text-rose-300">
+                      {calculationResult.assessment.pillars.S.earnedScore.toFixed(1)} / 35
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-rose-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-rose-600 rounded-full" 
+                      style={{ width: `${(calculationResult.assessment.pillars.S.earnedScore / 35) * 100}%` }} 
+                    />
+                  </div>
+                  <div className="mt-2 text-[10px] text-gray-500 dark:text-slate-400 flex flex-wrap gap-1 font-mono">
+                    <span className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 border border-rose-100 dark:border-slate-600">Safety LTIFR</span>
+                    <span className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 border border-rose-100 dark:border-slate-600">2% CSR Spend</span>
+                  </div>
+                </div>
+
+                {/* Governance */}
+                <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-slate-800/80 border border-amber-200 dark:border-slate-700">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-900 dark:text-white mb-1">
+                    <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                      <span>🏛️ Governance</span>
+                    </span>
+                    <span className="font-mono font-extrabold text-amber-800 dark:text-amber-300">
+                      {calculationResult.assessment.pillars.G.earnedScore.toFixed(1)} / 30
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-amber-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-amber-600 rounded-full" 
+                      style={{ width: `${(calculationResult.assessment.pillars.G.earnedScore / 30) * 100}%` }} 
+                    />
+                  </div>
+                  <div className="mt-2 text-[10px] text-gray-500 dark:text-slate-400 flex flex-wrap gap-1 font-mono">
+                    <span className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 border border-amber-100 dark:border-slate-600">Anti-Corruption</span>
+                    <span className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 border border-amber-100 dark:border-slate-600">Board Oversight</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Key Audited Findings */}
+              <div className="mt-3.5 p-3 rounded-xl bg-gray-50 dark:bg-slate-850 border border-gray-200 dark:border-slate-800">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-slate-400 block mb-1">
+                  Key Audited Disclosures from Document:
+                </span>
+                <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1">
+                  {calculationResult.assessment.strengths.slice(0, 2).map((s, idx) => (
+                    <li key={idx} className="flex items-start gap-1.5">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold">•</span>
+                      <span>{s}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-4 pt-2 border-t border-gray-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="w-full sm:w-auto px-3 py-2 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-750 text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Upload Another Report</span>
+                </button>
+
                 <button
                   type="button"
                   id="btn-view-detailed-report"
                   onClick={handleViewDetailedReport}
-                  className="w-full sm:w-auto px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer"
+                  className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all hover:shadow cursor-pointer"
                 >
-                  <span>Open Full Assessment Dashboard</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <span>Open Full Interactive Assessment & Dimension Breakdown</span>
+                  <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </div>

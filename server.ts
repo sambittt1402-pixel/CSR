@@ -100,10 +100,24 @@ const brsrAuditResponseSchema = {
 // Calculate BRSR directly from an uploaded file (PDF, text, CSV, markdown, JSON)
 app.post('/api/calculate-brsr-file', async (req, res) => {
   try {
-    const { fileName, fileType, fileBase64, fileContent, companyName, fiscalYear } = req.body;
+    const { fileName, fileType, fileBase64, fileContent: rawContent, companyName, fiscalYear } = req.body;
 
-    if (!fileContent && !fileBase64) {
+    if (!rawContent && !fileBase64) {
       return res.status(400).json({ error: 'No file content or file payload provided.' });
+    }
+
+    // Prepare text content, extracting readable ASCII/UTF8 from base64 if raw text is not present
+    let fileContent = rawContent || '';
+    if (!fileContent && fileBase64) {
+      try {
+        const rawBuffer = Buffer.from(cleanBase64Payload(fileBase64), 'base64');
+        const extracted = rawBuffer.toString('utf-8').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+        if (extracted.trim().length > 50) {
+          fileContent = extracted;
+        }
+      } catch {
+        // ignore extraction error
+      }
     }
 
     const ai = getGeminiClient();
